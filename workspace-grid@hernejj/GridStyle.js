@@ -16,11 +16,38 @@ GridStyle.prototype = {
         this.event_handlers = [];
         this.switch_id = global.window_manager.connect('switch-workspace', Lang.bind(this, this.update));
         this.scroll_id = this.applet.actor.connect('scroll-event', Lang.bind(this,this.onMouseScroll));
+        
+        this.workspaces = [];
+        this.update_workspaces_id = global.screen.connect('notify::n-workspaces', Lang.bind(this, this.update_workspaces));
+        this.update_workspaces();
     },
     
     cleanup: function() {
         global.window_manager.disconnect(this.switch_id);
         this.applet.actor.disconnect(this.scroll_id);
+        
+        global.screen.disconnect(this.update_workspaces_id);
+        this.cleanup_workspaces();
+    },
+    
+    cleanup_workspaces: function() {
+        for (let i = 0; i < this.workspaces.length; i++) {
+            let workspace = this.workspaces[i];
+            workspace.disconnect(workspace._window_added_id);
+            workspace.disconnect(workspace._window_removed_id);
+        }
+        this.workspaces = [];
+    },
+    
+    update_workspaces: function() {
+        this.cleanup_workspaces();
+        for (let i = 0; i < global.screen.n_workspaces; i++) {
+            let workspace = global.screen.get_workspace_by_index(i);
+            workspace._window_added_id = workspace.connect('window-added', Lang.bind(this, this.update));
+            workspace._window_removed_id = workspace.connect('window-removed', Lang.bind(this, this.update));
+            this.workspaces.push(workspace);
+        }
+        this.rebuild();
     },
     
     update_grid: function(cols, rows, height) {
@@ -118,6 +145,17 @@ GridStyle.prototype = {
                 this.button[i].add_style_pseudo_class('outlined');
             else
                 this.button[i].remove_style_pseudo_class('outlined');
+            
+            let windows = global.screen.get_workspace_by_index(i).list_windows();
+            windows = windows.filter(function(w) {
+                return !w.is_skip_taskbar() && !w.is_on_all_workspaces();
+            });
+            if (windows.length > 0) {
+                this.button[i].add_style_pseudo_class('nonempty');
+            }
+            else {
+                this.button[i].remove_style_pseudo_class('nonempty');
+            }
         }
     }    
 };
